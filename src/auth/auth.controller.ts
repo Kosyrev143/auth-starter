@@ -16,7 +16,7 @@ import { Response, Request } from 'express';
 
 import { AuthService } from './auth.service';
 import { Tokens } from './interfaces';
-import { LoginDto, RegisterDto } from './dto';
+import { LoginDto, RefreshDto, RegisterDto } from './dto';
 import { UserResponse } from '../user/responses';
 import { UserAgent, Public, Cookie } from 'common/decorators';
 
@@ -71,11 +71,16 @@ export class AuthController {
     @Cookie(REFRESH_TOKEN) refresh_token: string,
     @Res() response: Response,
     @UserAgent() user_agent: string,
+    @Body() dto: RefreshDto,
   ) {
     if (!refresh_token) {
       throw new UnauthorizedException();
     }
-    const tokens = await this.authService.refresh(refresh_token, user_agent);
+    const tokens = await this.authService.refresh(
+      refresh_token,
+      user_agent,
+      dto?.remember_me,
+    );
     if (!tokens) {
       throw new UnauthorizedException();
     }

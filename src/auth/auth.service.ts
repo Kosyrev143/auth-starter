@@ -26,7 +26,11 @@ export class AuthService {
     private readonly prisma: PrismaService,
   ) {}
 
-  async refresh(refresh_token: string, user_agent: string): Promise<Tokens> {
+  async refresh(
+    refresh_token: string,
+    user_agent: string,
+    remember_me = false,
+  ): Promise<Tokens> {
     const token = await this.prisma.token.delete({
       where: { token: refresh_token },
     });
@@ -34,7 +38,7 @@ export class AuthService {
       throw new UnauthorizedException();
     }
     const user = await this.userService.findOne(token.userId);
-    return this.generateTokens(user, user_agent);
+    return this.generateTokens(user, user_agent, remember_me);
   }
 
   async register(dto: RegisterDto) {
@@ -63,12 +67,13 @@ export class AuthService {
     if (!user || !compareSync(dto.password, user.password)) {
       throw new UnauthorizedException('Credentials not valid');
     }
-    return this.generateTokens(user, user_agent);
+    return this.generateTokens(user, user_agent, dto.remember_me ?? false);
   }
 
   private async generateTokens(
     user: User,
     user_agent: string,
+    remember_me: boolean,
   ): Promise<Tokens> {
     const access_token =
       'Bearer ' +
@@ -77,13 +82,18 @@ export class AuthService {
         email: user.email,
         roles: user.roles,
       });
-    const refresh_token = await this.getRefreshToken(user.id, user_agent);
+    const refresh_token = await this.getRefreshToken(
+      user.id,
+      user_agent,
+      remember_me,
+    );
     return { access_token, refresh_token };
   }
 
   private async getRefreshToken(
     userId: string,
     user_agent: string,
+    remember_me: boolean,
   ): Promise<Token> {
     const _token = await this.prisma.token.findFirst({
       where: {
@@ -96,11 +106,15 @@ export class AuthService {
       where: { token },
       update: {
         token: v4(),
-        exp: add(new Date(), { months: 1 }),
+        exp: remember_me
+          ? add(new Date(), { months: 1 })
+          : add(new Date(), { hours: 12 }),
       },
       create: {
         token: v4(),
-        exp: add(new Date(), { months: 1 }),
+        exp: remember_me
+          ? add(new Date(), { months: 1 })
+          : add(new Date(), { hours: 12 }),
         userId,
         userAgent: user_agent,
       },
@@ -111,26 +125,26 @@ export class AuthService {
     return this.prisma.token.delete({ where: { token } });
   }
 
-  async providerAuth(email: string, user_agent: string, provider: Provider) {
-    const userExists = await this.userService.findOne(email);
-    if (userExists) {
-      const user = await this.userService
-        .save({ email, provider })
-        .catch((err) => {
-          this.logger.error(err);
-          return null;
-        });
-      return this.generateTokens(user, user_agent);
-    }
-    const user = await this.userService
-      .save({ email, provider })
-      .catch((err) => {
-        this.logger.error(err);
-        return null;
-      });
-    if (!user) {
-      throw new BadRequestException();
-    }
-    return this.generateTokens(user, user_agent);
-  }
+  // async providerAuth(email: string, user_agent: string, provider: Provider) {
+  //   const userExists = await this.userService.findOne(email);
+  //   if (userExists) {
+  //     const user = await this.userService
+  //       .save({ email, provider })
+  //       .catch((err) => {
+  //         this.logger.error(err);
+  //         return null;
+  //       });
+  //     return this.generateTokens(user, user_agent);
+  //   }
+  //   const user = await this.userService
+  //     .save({ email, provider })
+  //     .catch((err) => {
+  //       this.logger.error(err);
+  //       return null;
+  //     });
+  //   if (!user) {
+  //     throw new BadRequestException();
+  //   }
+  //   return this.generateTokens(user, user_agent);
+  // }
 }
